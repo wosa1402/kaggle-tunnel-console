@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+data/*.db
+data/creds/
+data/work/
+data/template.ipynb
+.venv/
+venv/
+.idea/
+.vscode/

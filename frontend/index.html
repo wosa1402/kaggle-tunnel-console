@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kaggle 隧道控制台</title>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+  .card-glow { box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 20px 40px -20px rgba(0,0,0,0.5); }
+  .status-dot { width: 10px; height: 10px; border-radius: 9999px; display: inline-block; }
+  .blink { animation: blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+</style>
+</head>
+<body class="min-h-screen bg-base-300">
+<div id="app"></div>
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch } = Vue;
+
+const API = {
+  token: () => localStorage.getItem('ktc_token') || '',
+  setToken: (t) => localStorage.setItem('ktc_token', t),
+  clearToken: () => localStorage.removeItem('ktc_token'),
+  async call(path, opts = {}) {
+    const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+    if (this.token()) headers['Authorization'] = 'Bearer ' + this.token();
+    const res = await fetch(path, { ...opts, headers });
+    if (res.status === 401) {
+      this.clearToken();
+      window.location.reload();
+    }
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error((data && data.detail) || res.statusText);
+    return data;
+  },
+};
+
+const STATUS_META = {
+  running:  { color: 'bg-green-500',  text: '运行中',    pulse: true  },
+  queued:   { color: 'bg-amber-400',  text: '排队中',    pulse: true  },
+  complete: { color: 'bg-slate-400',  text: '已结束',    pulse: false },
+  error:    { color: 'bg-red-500',    text: '错误',      pulse: false },
+  cancelled:{ color: 'bg-slate-500',  text: '已取消',    pulse: false },
+  unknown:  { color: 'bg-slate-600',  text: '未知',      pulse: false },
+};
+
+function fmtDuration(sec) {
+  if (!sec || sec < 0) return '--:--:--';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+const LoginView = {
+  emits: ['logged-in'],
+  setup(_, { emit }) {
+    const form = reactive({ username: '', password: '' });
+    const loading = ref(false);
+    const err = ref('');
+    const submit = async () => {
+      loading.value = true; err.value = '';
+      try {
+        const r = await API.call('/api/auth/login', {
+          method: 'POST', body: JSON.stringify(form),
+        });
+        API.setToken(r.access_token);
+        emit('logged-in');
+      } catch (e) { err.value = e.message; }
+      finally { loading.value = false; }
+    };
+    return { form, loading, err, submit };
+  },
+  template: `
+    <div class="min-h-screen flex items-center justify-center p-4">
+      <div class="card w-full max-w-sm bg-base-100 card-glow">
+        <div class="card-body">
+          <h2 class="text-2xl font-bold text-center mb-2">Kaggle 隧道控制台</h2>
+          <p class="text-center text-sm opacity-60 mb-4">请登录</p>
+          <form @submit.prevent="submit" class="space-y-3">
+            <input v-model="form.username" type="text" placeholder="用户名"
+              class="input input-bordered w-full" required />
+            <input v-model="form.password" type="password" placeholder="密码"
+              class="input input-bordered w-full" required />
+            <button class="btn btn-primary w-full" :disabled="loading">
+              <span v-if="loading" class="loading loading-spinner loading-sm"></span>
+              登录
+            </button>
+            <div v-if="err" class="alert alert-error text-sm">{{ err }}</div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `,
+};
+
+const AccountCard = {
+  props: ['account'],
+  emits: ['start', 'refresh', 'edit', 'remove'],
+  setup(props) {
+    const now = ref(Date.now());
+    let timer = null;
+    onMounted(() => { timer = setInterval(() => now.value = Date.now(), 1000); });
+    onUnmounted(() => { clearInterval(timer); });
+    const runtimeSec = computed(() => {
+      if (!props.account.last_run_at) return 0;
+      const t = new Date(props.account.last_run_at + 'Z').getTime();
+      return Math.floor((now.value - t) / 1000);
+    });
+    const meta = computed(() => STATUS_META[props.account.last_status] || STATUS_META.unknown);
+    return { runtimeSec, meta, fmtDuration };
+  },
+  template: `
+    <div class="card bg-base-100 card-glow">
+      <div class="card-body p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="card-title text-base">{{ account.name }}</h3>
+          <div class="flex items-center gap-2">
+            <span :class="['status-dot', meta.color, meta.pulse && 'blink']"></span>
+            <span class="text-xs opacity-70">{{ meta.text }}</span>
+          </div>
+        </div>
+        <div class="text-xs opacity-60 mb-1 truncate">@{{ account.kaggle_username }}</div>
+        <div class="text-xs opacity-60 mb-3 truncate font-mono">{{ account.kernel_slug }}</div>
+
+        <div class="bg-base-200 rounded-lg p-3 mb-3 text-center">
+          <div class="text-[10px] uppercase opacity-50">运行时长</div>
+          <div class="text-xl font-mono">{{ fmtDuration(runtimeSec) }}</div>
+        </div>
+
+        <div class="flex gap-2">
+          <button class="btn btn-primary btn-sm flex-1" @click="$emit('start', account)">
+            启动
+          </button>
+          <button class="btn btn-ghost btn-sm" @click="$emit('refresh', account)" title="刷新状态">
+            ⟳
+          </button>
+          <a v-if="account.tunnel_url" :href="account.tunnel_url" target="_blank"
+             class="btn btn-outline btn-sm" title="打开隧道">打开</a>
+        </div>
+        <div class="flex gap-2 mt-2">
+          <button class="btn btn-ghost btn-xs flex-1" @click="$emit('edit', account)">编辑</button>
+          <button class="btn btn-ghost btn-xs text-error" @click="$emit('remove', account)">删除</button>
+        </div>
+      </div>
+    </div>
+  `,
+};
+
+const AccountDialog = {
+  props: ['modelValue', 'editing'],
+  emits: ['update:modelValue', 'saved'],
+  setup(props, { emit }) {
+    const blank = () => ({
+      name: '', kaggle_username: '', kaggle_api_key: '',
+      kernel_slug: '', tunnel_token: '', tunnel_url: '',
+    });
+    const form = reactive(blank());
+    const saving = ref(false);
+    const err = ref('');
+    watch(() => props.modelValue, (v) => {
+      err.value = '';
+      if (v) {
+        Object.assign(form, blank(), props.editing || {});
+      }
+    });
+    const close = () => emit('update:modelValue', false);
+    const save = async () => {
+      saving.value = true; err.value = '';
+      try {
+        if (props.editing) {
+          await API.call('/api/accounts/' + props.editing.id, {
+            method: 'PATCH', body: JSON.stringify(form),
+          });
+        } else {
+          await API.call('/api/accounts', {
+            method: 'POST', body: JSON.stringify(form),
+          });
+        }
+        emit('saved');
+        close();
+      } catch (e) { err.value = e.message; }
+      finally { saving.value = false; }
+    };
+    return { form, saving, err, close, save };
+  },
+  template: `
+    <dialog :open="modelValue" class="modal" :class="{'modal-open': modelValue}">
+      <div class="modal-box max-w-lg">
+        <h3 class="font-bold text-lg mb-4">{{ editing ? '编辑账号' : '添加账号' }}</h3>
+        <div class="space-y-3">
+          <label class="form-control">
+            <span class="label-text text-xs">别名</span>
+            <input v-model="form.name" class="input input-bordered input-sm" placeholder="e.g. account-A" />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Kaggle 用户名</span>
+            <input v-model="form.kaggle_username" class="input input-bordered input-sm" />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Kaggle API Key</span>
+            <input v-model="form.kaggle_api_key" type="password" class="input input-bordered input-sm" />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Kernel Slug (username/slug)</span>
+            <input v-model="form.kernel_slug" class="input input-bordered input-sm" placeholder="myuser/model-tunnel" />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">隧道 Token (会替换模板里的 {{ '{{TUNNEL_TOKEN}}' }})</span>
+            <textarea v-model="form.tunnel_token" class="textarea textarea-bordered textarea-sm font-mono" rows="3"></textarea>
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">固定隧道 URL (可选)</span>
+            <input v-model="form.tunnel_url" class="input input-bordered input-sm" placeholder="https://xxx.example.com" />
+          </label>
+          <div v-if="err" class="alert alert-error text-xs py-2">{{ err }}</div>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-ghost" @click="close">取消</button>
+          <button class="btn btn-primary" :disabled="saving" @click="save">
+            <span v-if="saving" class="loading loading-spinner loading-xs"></span>
+            保存
+          </button>
+        </div>
+      </div>
+      <div class="modal-backdrop" @click="close"></div>
+    </dialog>
+  `,
+};
+
+const Dashboard = {
+  components: { AccountCard, AccountDialog },
+  emits: ['logout'],
+  setup() {
+    const accounts = ref([]);
+    const loading = ref(false);
+    const toast = ref('');
+    const dialogOpen = ref(false);
+    const editing = ref(null);
+    let pollTimer = null;
+
+    const load = async () => {
+      loading.value = true;
+      try {
+        accounts.value = await API.call('/api/accounts');
+      } catch (e) { showToast(e.message); }
+      finally { loading.value = false; }
+    };
+
+    const refreshOne = async (acc) => {
+      try {
+        const r = await API.call('/api/accounts/' + acc.id + '/status');
+        const target = accounts.value.find(a => a.id === acc.id);
+        if (target) {
+          target.last_status = r.status;
+          target.tunnel_url = r.tunnel_url;
+        }
+      } catch (e) { /* silent in auto-poll */ }
+    };
+
+    const pollAll = () => accounts.value.forEach(refreshOne);
+
+    const start = async (acc) => {
+      try {
+        showToast('正在推送笔记 ' + acc.name + '…');
+        const r = await API.call('/api/accounts/' + acc.id + '/start', { method: 'POST' });
+        if (r.ok) {
+          showToast('已推送，正在排队运行');
+          setTimeout(() => refreshOne(acc), 3000);
+        } else {
+          showToast('启动失败：' + (r.stderr || r.stdout || '未知错误'));
+        }
+      } catch (e) { showToast('启动失败：' + e.message); }
+    };
+
+    const openCreate = () => { editing.value = null; dialogOpen.value = true; };
+    const openEdit = (acc) => { editing.value = { ...acc, kaggle_api_key: '', tunnel_token: '' }; dialogOpen.value = true; };
+    const remove = async (acc) => {
+      if (!confirm('确认删除账号 "' + acc.name + '"？')) return;
+      try {
+        await API.call('/api/accounts/' + acc.id, { method: 'DELETE' });
+        await load();
+      } catch (e) { showToast(e.message); }
+    };
+
+    const showToast = (msg) => {
+      toast.value = msg;
+      setTimeout(() => { if (toast.value === msg) toast.value = ''; }, 3500);
+    };
+
+    onMounted(async () => {
+      await load();
+      pollTimer = setInterval(pollAll, 15000);
+    });
+    onUnmounted(() => clearInterval(pollTimer));
+
+    return {
+      accounts, loading, toast, dialogOpen, editing,
+      load, refreshOne, start, openCreate, openEdit, remove,
+    };
+  },
+  template: `
+    <div class="min-h-screen">
+      <div class="navbar bg-base-100 border-b border-base-300 px-6">
+        <div class="flex-1">
+          <span class="text-lg font-semibold">Kaggle 隧道控制台</span>
+          <span class="badge badge-ghost ml-3">{{ accounts.length }} 账号</span>
+        </div>
+        <div class="flex-none gap-2">
+          <button class="btn btn-primary btn-sm" @click="openCreate">+ 添加账号</button>
+          <button class="btn btn-ghost btn-sm" @click="load" :disabled="loading">
+            <span v-if="loading" class="loading loading-spinner loading-xs"></span>
+            刷新
+          </button>
+          <button class="btn btn-ghost btn-sm" @click="$emit('logout')">退出</button>
+        </div>
+      </div>
+
+      <div class="p-6">
+        <div v-if="!accounts.length && !loading" class="text-center py-20 opacity-60">
+          <div class="text-lg mb-2">还没有账号</div>
+          <button class="btn btn-primary btn-sm" @click="openCreate">添加第一个账号</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <account-card v-for="a in accounts" :key="a.id" :account="a"
+            @start="start" @refresh="refreshOne" @edit="openEdit" @remove="remove" />
+        </div>
+      </div>
+
+      <div v-if="toast" class="toast toast-end">
+        <div class="alert alert-info">{{ toast }}</div>
+      </div>
+
+      <account-dialog v-model="dialogOpen" :editing="editing" @saved="load" />
+    </div>
+  `,
+};
+
+const App = {
+  components: { LoginView, Dashboard },
+  setup() {
+    const authed = ref(!!API.token());
+    const checking = ref(true);
+    onMounted(async () => {
+      if (authed.value) {
+        try { await API.call('/api/auth/me'); }
+        catch { authed.value = false; }
+      }
+      checking.value = false;
+    });
+    const logout = () => { API.clearToken(); authed.value = false; };
+    const onLogin = () => { authed.value = true; };
+    return { authed, checking, logout, onLogin };
+  },
+  template: `
+    <div v-if="checking" class="min-h-screen flex items-center justify-center">
+      <span class="loading loading-spinner loading-lg"></span>
+    </div>
+    <login-view v-else-if="!authed" @logged-in="onLogin" />
+    <dashboard v-else @logout="logout" />
+  `,
+};
+
+createApp(App).mount('#app');
+</script>
+</body>
+</html>
