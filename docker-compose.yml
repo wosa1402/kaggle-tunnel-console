@@ -1,6 +1,9 @@
 services:
   console:
-    build: .
+    # On VPS: pull pre-built multi-arch image from GHCR (no local build needed)
+    image: ghcr.io/wosa1402/kaggle-tunnel-console:latest
+    # For local development / if you want to build from source, uncomment:
+    # build: .
     container_name: kaggle-tunnel-console
     restart: unless-stopped
     ports:
@@ -9,3 +12,6 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+    # 1GB RAM VPS hardening: cap memory to prevent OOM-kills
+    mem_limit: 512m
+    memswap_limit: 768m
