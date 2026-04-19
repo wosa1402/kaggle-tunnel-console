@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, DateTime, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from .config import DB_PATH
+from .crypto import EncryptedString
 
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
@@ -18,9 +19,9 @@ class Account(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(64), nullable=False, unique=True)
     kaggle_username = Column(String(128), nullable=False)
-    kaggle_api_key = Column(String(256), nullable=False)
+    kaggle_api_key = Column(EncryptedString(512), nullable=False)
     kernel_slug = Column(String(256), nullable=False)
-    tunnel_token = Column(String(2048), nullable=False)
+    tunnel_token = Column(EncryptedString(4096), nullable=False)
     tunnel_url = Column(String(512), nullable=False, default="")
     last_status = Column(String(32), nullable=False, default="unknown")
     last_run_at = Column(DateTime, nullable=True)

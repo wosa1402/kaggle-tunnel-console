@@ -49,4 +49,8 @@ docker compose up -d
 
 - Kaggle 批处理最长 12 小时，到点自动结束，需要重新点"启动"
 - 一个 slug 同一时间只能跑一个实例
-- API Key 存在 SQLite 里是明文，务必确保 VPS/data 目录权限正确
+- **API key 和隧道 token 使用 Fernet (AES-128) 加密后存入 SQLite**，主密钥在 `.env` 的 `ENCRYPTION_KEY`。务必：
+  - 首次部署前生成：`python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`
+  - 妥善备份 `.env`（丢了这把 key = 所有已存账号凭证解不开）
+  - 不要改 key（换 key 需先导出→改 key→重新导入所有账号）
+- **登录防爆破**：同 IP 10 分钟内失败 5 次将锁定 15 分钟（返回 429）。反向代理部署时需正确传递 `X-Forwarded-For`，否则限速会按代理 IP 生效

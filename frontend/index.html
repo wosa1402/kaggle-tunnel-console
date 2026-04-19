@@ -203,7 +203,8 @@ const AccountDialog = {
           </label>
           <label class="form-control">
             <span class="label-text text-xs">Kaggle API Key</span>
-            <input v-model="form.kaggle_api_key" type="password" class="input input-bordered input-sm" />
+            <input v-model="form.kaggle_api_key" type="password" class="input input-bordered input-sm"
+              :placeholder="editing ? '留空则不修改' : ''" />
           </label>
           <label class="form-control">
             <span class="label-text text-xs">Kernel Slug (username/slug)</span>
@@ -211,7 +212,8 @@ const AccountDialog = {
           </label>
           <label class="form-control">
             <span class="label-text text-xs">隧道 Token (会替换模板里的 {{ '{{TUNNEL_TOKEN}}' }})</span>
-            <textarea v-model="form.tunnel_token" class="textarea textarea-bordered textarea-sm font-mono" rows="3"></textarea>
+            <textarea v-model="form.tunnel_token" class="textarea textarea-bordered textarea-sm font-mono" rows="3"
+              :placeholder="editing ? '留空则不修改' : ''"></textarea>
           </label>
           <label class="form-control">
             <span class="label-text text-xs">固定隧道 URL (可选)</span>

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +11,7 @@ from . import kaggle_service
 from .auth import create_token, require_user, verify_credentials
 from .config import FRONTEND_DIR
 from .db import Account, get_db, init_db
+from .rate_limit import client_ip, login_limiter
 from .schemas import AccountCreate, AccountOut, AccountUpdate, LoginRequest, TokenResponse
 
 app = FastAPI(title="Kaggle Tunnel Console", version="0.1.0")
@@ -32,9 +33,13 @@ def _startup():
 # ---------- Auth ----------
 
 @app.post("/api/auth/login", response_model=TokenResponse)
-def login(body: LoginRequest):
+def login(body: LoginRequest, request: Request):
+    ip = client_ip(request)
+    login_limiter.check(ip)
     if not verify_credentials(body.username, body.password):
+        login_limiter.record_failure(ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
+    login_limiter.record_success(ip)
     return TokenResponse(access_token=create_token(body.username))
 
 
@@ -75,7 +80,11 @@ def update_account(
     acc = db.get(Account, account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    payload = body.model_dump(exclude_unset=True)
+    for k in ("kaggle_api_key", "tunnel_token"):
+        if payload.get(k) == "":
+            payload.pop(k)
+    for k, v in payload.items():
         setattr(acc, k, v)
     db.commit()
     db.refresh(acc)
