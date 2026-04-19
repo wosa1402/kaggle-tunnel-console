@@ -13,7 +13,7 @@ from .config import (
     JWT_SECRET,
 )
 
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_ctx = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 _admin_password_hash = pwd_ctx.hash(ADMIN_PASSWORD)
