@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Kaggle 隧道控制台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%233b82f6'/><text x='50%25' y='22' font-family='Arial' font-size='20' font-weight='bold' fill='white' text-anchor='middle'>K</text></svg>" />
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -211,7 +212,7 @@ const AccountDialog = {
             <input v-model="form.kernel_slug" class="input input-bordered input-sm" placeholder="myuser/model-tunnel" />
           </label>
           <label class="form-control">
-            <span class="label-text text-xs">隧道 Token (会替换模板里的 {{ '{{TUNNEL_TOKEN}}' }})</span>
+            <span class="label-text text-xs">隧道 Token (会替换模板里的 <code v-pre>{{TUNNEL_TOKEN}}</code>)</span>
             <textarea v-model="form.tunnel_token" class="textarea textarea-bordered textarea-sm font-mono" rows="3"
               :placeholder="editing ? '留空则不修改' : ''"></textarea>
           </label>
