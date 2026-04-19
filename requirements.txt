@@ -7,6 +7,6 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1  # pin: newer bcrypt breaks passlib 1.7.4's startup self-check
 python-multipart==0.0.12
 cryptography==43.0.1
-kaggle==1.6.17
+kaggle>=1.8.0  # >=1.8 supports new-style KGAT_* API tokens in addition to legacy keys
 httpx==0.27.2
 python-dotenv==1.0.1
